@@ -1,0 +1,124 @@
+# https://docs.github.com/zh/actions/reference/workflows-and-actions/workflow-syntax
+name: Build with Docker & Deploy to GitHub Pages
+
+# ---- 触发条件 ----
+on:
+  push:
+    branches: [main]
+    # 只有这些文件变化才触发，避免改 README 也跑一遍构建。
+    paths:
+      - 'src/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/**'
+  # 允许在 Actions 页面手动点击运行，方便调试
+  workflow_dispatch:
+
+# ---- 权限 ----
+# GitHub Actions 默认 token 权限很小，部署 Pages 必须显式声明。
+permissions:
+  contents: read   # 读取仓库代码（checkout）
+  pages: write     # 写入 GitHub Pages
+  id-token: write  # deploy-pages 用它做 OIDC 校验
+
+# ---- 并发控制 ----
+# 同一时间只跑一个 pages 部署；新任务不会取消正在进行的部署，
+# 避免部署到一半被打断导致页面 404。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # ================================================================
+  # Job 1：用 Docker 构建镜像，并从中提取静态文件
+  # ================================================================
+  build:
+    name: Build (Docker)
+    runs-on: ubuntu-latest   # GitHub 提供的免费 Linux 运行器，自带 Docker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 生成构建时间，写入 step 的 output，供后续步骤使用。
+      # $GITHUB_OUTPUT 是官方推荐的跨 step 传值方式。
+      - name: Prepare metadata
+        id: meta
+        run: echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # buildx 是 Docker 的增强构建器，支持高级缓存。
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 官方推荐的镜像构建 Action（比直接写 docker build 更好用）：
+      # - load: true  把镜像加载到本地 docker，后续 docker run/docker cp 才能用
+      # - cache-from/to: type=gha  用 GitHub Actions 缓存存 Docker 层缓存
+      # - build-args  传入 Dockerfile 里的 ARG
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: demo-site:ci
+          build-args: |
+            BASE_PATH=/${{ github.event.repository.name }}/
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 冒烟测试：真正把容器跑起来，确认镜像能对外提供页面。
+      # 这一步能尽早发现「镜像构建成功但跑不起来」的问题。
+      - name: Smoke test
+        run: |
+          docker run -d --name smoke -p 8080:80 demo-site:ci
+          for i in $(seq 1 15); do
+            if curl -fsS http://localhost:8080/ >/dev/null 2>&1; then
+              echo "✅ 容器已就绪"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/ | grep -q "Docker"
+          echo "✅ 页面内容校验通过"
+          docker rm -f smoke
+
+      # GitHub Pages 只能托管静态文件，不能跑容器。
+      # 所以这里把镜像里的静态文件「抽」出来。
+      - name: Extract static files from image
+        run: |
+          docker create --name extract demo-site:ci
+          mkdir -p dist
+          docker cp extract:/usr/share/nginx/html/. dist/
+          docker rm extract
+          ls -la dist
+
+      # 把 dist 打包成 Pages 专用 artifact
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # ================================================================
+  # Job 2：把 artifact 部署到 GitHub Pages
+  # ================================================================
+  deploy:
+    name: Deploy (GitHub Pages)
+    needs: build             # 等 build 成功后再执行
+    runs-on: ubuntu-latest
+
+    # environment 会关联仓库的 github-pages 环境，
+    # 页面上能看到部署 URL，也支持配置审批/保护规则。
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Docker + GitHub Actions 入门 Demo</title>
+    <!-- Vite 会自动把相对路径重写成带 base 的路径 -->
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1>🚀 Docker + GitHub Actions</h1>
+      <p class="sub">
+        这个页面由 <b>Docker 多阶段构建</b> 产出静态文件，
+        再由 <b>GitHub Actions</b> 部署到 GitHub Pages。
+      </p>
+
+      <ul class="info" id="info"></ul>
+
+      <p class="tip">
+        修改 <code>src/main.js</code> 并 push 到 main 分支，
+        约 1~2 分钟后刷新本页即可看到变化。
+      </p>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

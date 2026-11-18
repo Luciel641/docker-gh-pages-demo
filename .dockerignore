@@ -1,0 +1,8 @@
+# 这些文件不需要进入 docker 构建上下文，
+# 既能加快构建，也能避免把本地 node_modules 覆盖进镜像。
+node_modules
+dist
+.git
+.github
+*.md
+.DS_Store
