@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 生成构建时间，写入 step 的 output，供后续步骤使用。
       # $GITHUB_OUTPUT 是官方推荐的跨 step 传值方式。
@@ -52,14 +52,14 @@ jobs:
 
       # buildx 是 Docker 的增强构建器，支持高级缓存。
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # 官方推荐的镜像构建 Action（比直接写 docker build 更好用）：
       # - load: true  把镜像加载到本地 docker，后续 docker run/docker cp 才能用
       # - cache-from/to: type=gha  用 GitHub Actions 缓存存 Docker 层缓存
       # - build-args  传入 Dockerfile 里的 ARG
       - name: Build Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -100,7 +100,7 @@ jobs:
 
       # 把 dist 打包成 Pages 专用 artifact
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
